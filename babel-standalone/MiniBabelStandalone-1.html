@@ -3,6 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <title>Mini Babel Demo</title>
+  <!-- 优化的 CSP 策略 -->
+  <meta http-equiv="Content-Security-Policy" content="script-src 'self' blob: 'unsafe-eval' chrome-extension://27e24747-6f27-4bc5-a18b-c203446e1dff/; object-src 'self';">
   <script src="minibabel.js"></script>
 </head>
 <body>
@@ -65,17 +67,20 @@
       function render() {
         const root = document.getElementById('root');
         root.innerHTML = '';
-        root.appendChild(
-          <div>
-            <h1>Count: {count}</h1>
-            <button onClick={increment}>Increment</button>
-          </div>
+        
+        // 使用 JavaScript 对象替代 JSX 语法，避免复杂的转换问题
+        const counterElement = h('div', null,
+          h('h1', null, 'Count: ', count),
+          h('button', { onClick: increment }, 'Increment')
         );
+        
+        root.appendChild(counterElement);
       }
       
       render();
     }
     
+    // 直接调用组件，不依赖 JSX 转换
     Counter();
   </script>
 </body>
