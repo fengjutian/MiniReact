@@ -48,9 +48,6 @@
       stateIndex++;
     }
 
-    /**
-     * @jsx createElement
-     */
     function createElement(tag, props, ...children) {
       return { tag, props: props || {}, children: children.flat() };
     }

@@ -21,15 +21,25 @@
       
       const element = document.createElement(tag);
       
-      // 设置属性
+      // 检查是否存在属性对象
       if (props) {
+        // 遍历属性对象中的每个属性
         for (const key in props) {
+          // 处理事件监听属性（以 'on' 开头且值为函数）
           if (key.startsWith('on') && typeof props[key] === 'function') {
+            // 提取事件名（去掉 'on' 前缀并转为小写）
             const eventName = key.slice(2).toLowerCase();
+            // 为元素添加事件监听器
             element.addEventListener(eventName, props[key]);
-          } else if (key === 'style' && typeof props[key] === 'object') {
+          } 
+          // 处理样式属性（属性名为 'style' 且值为对象）
+          else if (key === 'style' && typeof props[key] === 'object') {
+            // 将样式对象合并到元素的 style 属性上
             Object.assign(element.style, props[key]);
-          } else {
+          } 
+          // 处理其他普通属性
+          else {
+            // 为元素设置属性
             element.setAttribute(key, props[key]);
           }
         }
