@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mini Babel Demo</title>
+  <script src="minibabel.js"></script>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/jsx">
+    /** @jsx h */
+    
+    // 自定义的 JSX 转换函数
+    function h(tag, props, ...children) {
+      if (typeof tag === 'function') {
+        return tag({ ...props, children });
+      }
+      
+      const element = document.createElement(tag);
+      
+      // 设置属性
+      if (props) {
+        for (const key in props) {
+          if (key.startsWith('on') && typeof props[key] === 'function') {
+            const eventName = key.slice(2).toLowerCase();
+            element.addEventListener(eventName, props[key]);
+          } else if (key === 'style' && typeof props[key] === 'object') {
+            Object.assign(element.style, props[key]);
+          } else {
+            element.setAttribute(key, props[key]);
+          }
+        }
+      }
+      
+      // 添加子元素
+      children.forEach(child => {
+        if (child === null || child === undefined) return;
+        
+        if (typeof child === 'string' || typeof child === 'number') {
+          element.appendChild(document.createTextNode(child));
+        } else if (Array.isArray(child)) {
+          child.forEach(nestedChild => element.appendChild(
+            typeof nestedChild === 'string' || typeof nestedChild === 'number' 
+              ? document.createTextNode(nestedChild) 
+              : nestedChild
+          ));
+        } else {
+          element.appendChild(child);
+        }
+      });
+      
+      return element;
+    }
+    
+    // 简单组件
+    function Counter() {
+      let count = 0;
+      
+      function increment() {
+        count++;
+        render();
+      }
+      
+      function render() {
+        const root = document.getElementById('root');
+        root.innerHTML = '';
+        root.appendChild(
+          <div>
+            <h1>Count: {count}</h1>
+            <button onClick={increment}>Increment</button>
+          </div>
+        );
+      }
+      
+      render();
+    }
+    
+    Counter();
+  </script>
+</body>
+</html>
