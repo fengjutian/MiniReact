@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mini React v3</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    /*** Mini React v3 ***/
+
+    let state = [];
+    let stateIndex = 0;
+    let effectDeps = [];
+    let cleanupEffects = [];
+
+    function useState(initial) {
+      const currentIndex = stateIndex;
+      state[currentIndex] = state[currentIndex] ?? initial;
+
+      function setState(newState) {
+        state[currentIndex] = newState;
+        rerender();
+      }
+
+      stateIndex++;
+      return [state[currentIndex], setState];
+    }
+
+    function useEffect(callback, deps) {
+      const currentIndex = stateIndex;
+      const prevDeps = effectDeps[currentIndex];
+      let hasChanged = true;
+
+      if (prevDeps) {
+        hasChanged = deps.some((d, i) => d !== prevDeps[i]);
+      }
+
+      if (hasChanged) {
+        if (cleanupEffects[currentIndex]) cleanupEffects[currentIndex]();
+        const cleanup = callback();
+        if (typeof cleanup === 'function') cleanupEffects[currentIndex] = cleanup;
+        else cleanupEffects[currentIndex] = null;
+        effectDeps[currentIndex] = deps;
+      }
+
+      stateIndex++;
+    }
+
+    /**
+     * @jsx createElement
+     */
+    function createElement(tag, props, ...children) {
+      return { tag, props: props || {}, children: children.flat() };
+    }
+
+    /*** 核心 diff 渲染函数 ***/
+    function render(vnode, container, oldNode = null) {
+      // 删除节点
+      if (vnode === null || vnode === undefined) {
+        if (oldNode && oldNode.el) container.removeChild(oldNode.el);
+        return null;
+      }
+
+      // 文本节点
+      if (typeof vnode === 'string' || typeof vnode === 'number') {
+        if (oldNode && oldNode.type === 'text') {
+          if (oldNode.text !== vnode) {
+            oldNode.el.textContent = vnode;
+          }
+          return { ...oldNode, text: vnode };
+        }
+        const el = document.createTextNode(vnode);
+        container.appendChild(el);
+        return { type: 'text', el, text: vnode };
+      }
+
+      // 函数组件
+      if (typeof vnode.tag === 'function') {
+        const componentVNode = vnode.tag({ ...vnode.props, children: vnode.children });
+        return render(componentVNode, container, oldNode ? oldNode.child : null);
+      }
+
+      // 普通元素
+      let el;
+      if (oldNode && oldNode.el && oldNode.type === vnode.tag) {
+        el = oldNode.el;
+      } else {
+        el = document.createElement(vnode.tag);
+        if (oldNode && oldNode.el) container.replaceChild(el, oldNode.el);
+        else container.appendChild(el);
+      }
+
+      // 属性和事件绑定
+      const oldProps = (oldNode && oldNode.props) || {};
+      for (const key in vnode.props) {
+        if (key.startsWith('on') && typeof vnode.props[key] === 'function') {
+          if (oldProps[key] !== vnode.props[key]) {
+            if (oldProps[key]) el.removeEventListener(key.slice(2).toLowerCase(), oldProps[key]);
+            el.addEventListener(key.slice(2).toLowerCase(), vnode.props[key]);
+          }
+        } else if (key === 'style' && typeof vnode.props[key] === 'object') {
+          Object.assign(el.style, vnode.props[key]);
+        } else {
+          if (oldProps[key] !== vnode.props[key]) el.setAttribute(key, vnode.props[key]);
+        }
+      }
+      for (const key in oldProps) {
+        if (!(key in vnode.props)) {
+          if (key.startsWith('on')) el.removeEventListener(key.slice(2).toLowerCase(), oldProps[key]);
+          else el.removeAttribute(key);
+        }
+      }
+
+      // 子节点 diff
+      const oldChildren = (oldNode && oldNode.children) || [];
+      const newChildren = [];
+      const maxLen = Math.max(vnode.children.length, oldChildren.length);
+
+      for (let i = 0; i < maxLen; i++) {
+        newChildren[i] = render(vnode.children[i], el, oldChildren[i]);
+      }
+
+      return { type: vnode.tag, el, props: vnode.props, children: newChildren };
+    }
+
+    const container = document.getElementById('root');
+    let AppComponent = null;
+    let prevVNode = null;
+
+    function createApp(App) {
+      AppComponent = App;
+      rerender();
+    }
+
+    function rerender() {
+      stateIndex = 0;
+      prevVNode = render(<AppComponent />, container, prevVNode);
+    }
+
+    /*** 示例组件 ***/
+    function Counter({ initial = 0 }) {
+      const [count, setCount] = useState(initial);
+
+      useEffect(() => {
+        console.log('Count updated:', count);
+        return () => console.log('Cleanup count:', count);
+      }, [count]);
+
+      return (
+        <div>
+          <h2>Counter: {count}</h2>
+          <button onClick={() => setCount(count + 1)}>+</button>
+          <button onClick={() => setCount(count - 1)}>-</button>
+        </div>
+      );
+    }
+
+    function App() {
+      const [text, setText] = useState('Mini React v3');
+      const items = [{ id: 1, text: 'Apple' }, { id: 2, text: 'Banana' }];
+
+      return (
+        <div>
+          <h1>Mini React v3 Demo</h1>
+          <input value={text} onInput={e => setText(e.target.value)} />
+          <p>You typed: {text}</p>
+          <Counter initial={5} />
+          <ul>
+            {items.map(item => <li key={item.id}>{item.text}</li>)}
+          </ul>
+        </div>
+      );
+    }
+
+    createApp(App);
+  </script>
+</body>
+</html>

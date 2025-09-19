@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mini React v5</title>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="portal-root" style="border:1px solid red; padding:10px; margin-top:10px;"></div>
+
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel">
+    /**
+     * @jsx createElement
+     */
+    /**
+     * 🔹 v5 特性总结
+
+        完整 key diff + 节点移动优化
+
+        Fragment 支持 <></>
+
+        Portal 支持 Portal container={domNode}
+
+        模拟 Fiber 调度，异步渲染，不阻塞 UI
+
+        useState/useEffect + cleanup
+
+        嵌套组件局部刷新
+     */
+    /*** Mini React v5 ***/
+
+    // 1. 先定义基本常量和全局变量
+    const Fragment = Symbol('Fragment');
+    const Portal = Symbol('Portal');
+
+    let state = [];
+    let stateIndex = 0;
+    let effectDeps = [];
+    let cleanupEffects = [];
+    let nextUnitOfWork = null;
+    let wipRoot = null;
+    let containerRoot = null;
+    let prevVNode = null;
+
+    // 2. 定义createElement函数（必须在任何JSX之前）
+    function createElement(tag, props, ...children) {
+      return { tag, props: props || {}, children: children.flat() };
+    }
+
+    // 3. 定义Hooks函数
+    function useState(initial) {
+      const idx = stateIndex;
+      state[idx] = state[idx] ?? initial;
+      function setState(newState) {
+        state[idx] = newState;
+        scheduleRender();
+      }
+      stateIndex++;
+      return [state[idx], setState];
+    }
+
+    function useEffect(callback, deps) {
+      const idx = stateIndex;
+      const prevDeps = effectDeps[idx];
+      let changed = true;
+      if (prevDeps) changed = deps.some((d, i) => d !== prevDeps[i]);
+      if (changed) {
+        if (cleanupEffects[idx]) cleanupEffects[idx]();
+        const cleanup = callback();
+        cleanupEffects[idx] = typeof cleanup === 'function' ? cleanup : null;
+        effectDeps[idx] = deps;
+      }
+      stateIndex++;
+    }
+
+    // 4. 定义核心渲染函数
+    function renderVNode(vnode, container, oldVNode = null) {
+      if (!vnode) {
+        if (oldVNode && oldVNode.el) container.removeChild(oldVNode.el);
+        return null;
+      }
+
+      if (typeof vnode === 'string' || typeof vnode === 'number') {
+        if (oldVNode && oldVNode.type === 'text') {
+          if (oldVNode.text !== vnode) oldVNode.el.textContent = vnode;
+          return { type: 'text', el: oldVNode.el, text: vnode };
+        }
+        const el = document.createTextNode(vnode);
+        container.appendChild(el);
+        return { type: 'text', el, text: vnode };
+      }
+
+      if (typeof vnode.tag === 'function') {
+        const compVNode = vnode.tag({ ...vnode.props, children: vnode.children });
+        return renderVNode(compVNode, container, oldVNode ? oldVNode.child : null);
+      }
+
+      if (vnode.tag === Fragment) {
+        const childrenNodes = [];
+        vnode.children.forEach((child, i) => {
+          childrenNodes.push(renderVNode(child, container, oldVNode ? oldVNode.children[i] : null));
+        });
+        return { type: Fragment, children: childrenNodes };
+      }
+
+      if (vnode.tag === Portal) {
+        const portalContainer = vnode.props.container;
+        const childrenNodes = [];
+        vnode.children.forEach((child, i) => {
+          childrenNodes.push(renderVNode(child, portalContainer, oldVNode ? oldVNode.children[i] : null));
+        });
+        return { type: Portal, children: childrenNodes };
+      }
+
+      let el;
+      if (oldVNode && oldVNode.el && oldVNode.type === vnode.tag) {
+        el = oldVNode.el;
+      } else {
+        el = document.createElement(vnode.tag);
+        if (oldVNode && oldVNode.el) container.replaceChild(el, oldVNode.el);
+        else container.appendChild(el);
+      }
+
+      const oldProps = (oldVNode && oldVNode.props) || {};
+      for (const key in vnode.props) {
+        if (key.startsWith('on') && typeof vnode.props[key] === 'function') {
+          if (oldProps[key] !== vnode.props[key]) {
+            if (oldProps[key]) el.removeEventListener(key.slice(2).toLowerCase(), oldProps[key]);
+            el.addEventListener(key.slice(2).toLowerCase(), vnode.props[key]);
+          }
+        } else if (key === 'style' && typeof vnode.props[key] === 'object') {
+          Object.assign(el.style, vnode.props[key]);
+        } else {
+          if (oldProps[key] !== vnode.props[key]) el.setAttribute(key, vnode.props[key]);
+        }
+      }
+      for (const key in oldProps) {
+        if (!(key in vnode.props)) {
+          if (key.startsWith('on')) el.removeEventListener(key.slice(2).toLowerCase(), oldProps[key]);
+          else el.removeAttribute(key);
+        }
+      }
+
+      // Children diff with key
+      const oldChildren = (oldVNode && oldVNode.children) || [];
+      const newChildren = [];
+      const keyedOld = {};
+      oldChildren.forEach(c => { if (c && c.props && c.props.key != null) keyedOld[c.props.key] = c; });
+
+      vnode.children.forEach((child, i) => {
+        let oldChild = null;
+        if (child && child.props && child.props.key != null) oldChild = keyedOld[child.props.key] || null;
+        else oldChild = oldChildren[i] || null;
+        newChildren.push(renderVNode(child, el, oldChild));
+      });
+
+      return { type: vnode.tag, el, props: vnode.props, children: newChildren };
+    }
+
+    // 5. 定义组件
+    function Counter({ initial = 0 }) {
+      const [count, setCount] = useState(initial);
+      useEffect(() => {
+        console.log('Counter', count);
+        return () => console.log('Cleanup', count);
+      }, [count]);
+      return (
+        <div>
+          <h2>Counter: {count}</h2>
+          <button onClick={() => setCount(count + 1)}>+</button>
+          <button onClick={() => setCount(count - 1)}>-</button>
+        </div>
+      );
+    }
+
+    function App() {
+      const [text, setText] = useState('Mini React v5');
+      const [items, setItems] = useState([
+        { id: 1, text: 'Apple' },
+        { id: 2, text: 'Banana' },
+      ]);
+
+      function addItem() {
+        const nextId = items.length + 1;
+        setItems([...items, { id: nextId, text: `Item ${nextId}` }]);
+      }
+
+      return (
+        <div>
+          <h1>Mini React v5 Demo</h1>
+          <input value={text} onInput={e => setText(e.target.value)} />
+          <p>You typed: {text}</p>
+          <Counter initial={5} />
+          <button onClick={addItem}>Add Item</button>
+          <ul>
+            {items.map(item => <li key={item.id}>{item.text}</li>)}
+          </ul>
+          <Portal container={document.getElementById('portal-root')}>
+            <p>This is rendered via Portal!</p>
+          </Portal>
+        </div>
+      );
+    }
+
+    // 6. 定义Fiber调度相关函数（在组件定义后）
+    function performUnitOfWork(fiber) {
+      // 在 fiber 中执行渲染 vnode
+      fiber.el = renderVNode(fiber.vnode, fiber.container, fiber.prevVNode);
+      return null; // 简化为一次渲染完成
+    }
+
+    function commitRoot() {
+      prevVNode = wipRoot.el;
+      wipRoot = null;
+    }
+
+    function workLoop(deadline) {
+      while (nextUnitOfWork && deadline.timeRemaining() > 1) {
+        nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+      }
+      if (nextUnitOfWork) {
+        requestIdleCallback(workLoop);
+      } else if (wipRoot) {
+        commitRoot();
+      }
+    }
+
+    function scheduleRender() {
+      // 现在App已经定义，可以安全使用
+      wipRoot = { vnode: <App />, container: containerRoot, prevVNode: prevVNode };
+      nextUnitOfWork = wipRoot;
+      requestIdleCallback(workLoop);
+    }
+
+    // 7. 定义应用入口和初始化
+    function createApp(App) {
+      containerRoot && scheduleRender();
+    }
+
+    // 8. 最后初始化应用
+    containerRoot = document.getElementById('root');
+    createApp(App);
+  </script>
+</body>
+</html>

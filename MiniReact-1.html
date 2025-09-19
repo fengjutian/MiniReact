@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mini React Complete</title>
+</head>
+<body>
+  <div id="root"></div>
+
+  <!-- Babel 实时编译 JSX -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+
+    /**
+     * @jsx createElement
+     */
+
+     /**
+      *      ### 核心作用
+            这个注释告诉 Babel 的 JSX 转换器 使用自定义的 createElement 函数 来处理 JSX 语法，而不是默认的 React.createElement 。
+
+            ### 工作原理详解
+            1. 1.
+            JSX 转换过程 ：
+            
+            - 当你在代码中编写类似 <AppComponent /> 这样的 JSX 语法时，Babel 需要将其转换为浏览器可执行的普通 JavaScript
+            - 默认情况下，Babel 会将 <AppComponent /> 转换为 React.createElement(AppComponent)
+            2. 2.
+            问题所在 ：
+            
+            - 在这个 Mini React 实现中，我们没有导入真正的 React 库
+            - 但我们自己实现了一个 createElement 函数来处理元素创建逻辑
+            - 如果没有这个注释，Babel 仍然会尝试调用不存在的 React.createElement ，导致 "React is not defined" 错误
+            3. 3.
+            解决机制 ：
+            
+            - 通过添加 @jsx createElement 指令，我们告诉 Babel 使用本地定义的 createElement 函数
+            - 这样，JSX 代码就会被正确转换为 createElement(AppComponent) 而不是 React.createElement(AppComponent)
+      * 
+      * 
+      * /
+
+    /*** Mini React 核心 ***/
+    let state = [];
+    let stateIndex = 0;
+
+    function useState(initial) {
+      const currentIndex = stateIndex;
+      state[currentIndex] = state[currentIndex] ?? initial;
+
+      function setState(newState) {
+        state[currentIndex] = newState;
+        rerender();
+      }
+
+      stateIndex++;
+      return [state[currentIndex], setState];
+    }
+
+    function createElement(tag, props, ...children) {
+      return { tag, props: props || {}, children: children.flat() };
+    }
+
+    function render(vnode, container) {
+      if (vnode === null || vnode === undefined) return;
+
+      if (typeof vnode === 'string' || typeof vnode === 'number') {
+        container.appendChild(document.createTextNode(vnode));
+        return;
+      }
+
+      // 函数组件
+      if (typeof vnode.tag === 'function') {
+        const componentVnode = vnode.tag({ ...vnode.props, children: vnode.children });
+        return render(componentVnode, container);
+      }
+
+      const el = document.createElement(vnode.tag);
+
+      // 属性和事件绑定
+      for (const key in vnode.props) {
+        if (key.startsWith('on') && typeof vnode.props[key] === 'function') {
+          el.addEventListener(key.slice(2).toLowerCase(), vnode.props[key]);
+        } else if (key === "style" && typeof vnode.props[key] === "object") {
+          Object.assign(el.style, vnode.props[key]);
+        } else {
+          el.setAttribute(key, vnode.props[key]);
+        }
+      }
+
+      // 子节点渲染
+      vnode.children.forEach(child => render(child, el));
+
+      container.appendChild(el);
+    }
+
+    const container = document.getElementById('root');
+    let AppComponent = null;
+
+    function createApp(App) {
+      AppComponent = App;
+      rerender();
+    }
+
+    function rerender() {
+      stateIndex = 0;
+      container.innerHTML = '';
+      render(<AppComponent />, container);
+    }
+
+    /*** 示例组件 ***/
+    function Counter({ initial = 0 }) {
+      const [count, setCount] = useState(initial);
+      return (
+        <div>
+          <h2>Counter: {count}</h2>
+          <button onClick={() => setCount(count + 1)}>+</button>
+          <button onClick={() => setCount(count - 1)}>-</button>
+        </div>
+      );
+    }
+
+    function App() {
+      const [text, setText] = useState('Hello Mini React');
+
+      return (
+        <div>
+          <h1>Mini React Demo</h1>
+          <input value={text} onInput={e => setText(e.target.value)} />
+          <p>You typed: {text}</p>
+          <Counter initial={10} />
+          <Counter initial={20} />
+        </div>
+      );
+    }
+
+    createApp(App);
+  </script>
+</body>
+</html>

@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mini React v5 Key Replace Demo</title>
+</head>
+<body>
+  <div id="root" style="border:1px solid #000; padding:10px;"></div>
+  <div id="portal-root" style="border:1px solid red; padding:10px; margin-top:10px;"></div>
+
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel" data-plugins="transform-react-jsx" data-react-pragma="createElement" data-react-pragma-fragment="Fragment">
+    /**
+     * @jsx createElement
+     * @jsxFrag Fragment
+     */
+    const Fragment = Symbol('Fragment');
+    const Portal = Symbol('Portal');
+
+    let state = [];
+    let stateIndex = 0;
+    let effectDeps = [];
+    let cleanupEffects = [];
+
+    function useState(initial) {
+      const idx = stateIndex;
+      state[idx] = state[idx] ?? initial;
+      function setState(newState) {
+        state[idx] = newState;
+        scheduleRender();
+      }
+      stateIndex++;
+      return [state[idx], setState];
+    }
+
+    function useEffect(callback, deps) {
+      const idx = stateIndex;
+      const prevDeps = effectDeps[idx];
+      let changed = true;
+      if (prevDeps) changed = deps.some((d,i)=>d!==prevDeps[i]);
+      if(changed){
+        if(cleanupEffects[idx]) cleanupEffects[idx]();
+        const cleanup = callback();
+        cleanupEffects[idx] = typeof cleanup === 'function'?cleanup:null;
+        effectDeps[idx] = deps;
+      }
+      stateIndex++;
+    }
+
+    function createElement(tag, props, ...children) {
+      return { tag, props: props || {}, children: children.flat() };
+    }
+
+    // Fiber-like async render
+    let nextUnitOfWork = null;
+    let wipRoot = null;
+    let containerRoot = document.getElementById('root');
+    let prevVNode = null;
+
+    function scheduleRender() {
+      wipRoot = { vnode: <App />, container: containerRoot, prevVNode: prevVNode };
+      nextUnitOfWork = wipRoot;
+      requestIdleCallback(workLoop);
+    }
+
+    function workLoop(deadline){
+      while(nextUnitOfWork && deadline.timeRemaining() > 1){
+        nextUnitOfWork = performUnitOfWork(nextUnitOfWork);
+      }
+      if(nextUnitOfWork) requestIdleCallback(workLoop);
+      else if(wipRoot) commitRoot();
+    }
+
+    function performUnitOfWork(fiber){
+      fiber.el = renderVNode(fiber.vnode, fiber.container, fiber.prevVNode);
+      return null; // simplified
+    }
+
+    function commitRoot(){
+      prevVNode = wipRoot.el;
+      wipRoot = null;
+    }
+
+    /*** renderVNode with key replace ***/
+    function renderVNode(vnode, container, oldVNode=null){
+      if(!vnode){
+        if(oldVNode && oldVNode.el) container.removeChild(oldVNode.el);
+        return null;
+      }
+
+      if(typeof vnode === 'string'||typeof vnode==='number'){
+        if(oldVNode && oldVNode.type==='text'){
+          if(oldVNode.text!==vnode) oldVNode.el.textContent=vnode;
+          return {...oldVNode, text:vnode};
+        }
+        const el=document.createTextNode(vnode);
+        container.appendChild(el);
+        return {type:'text', el, text:vnode};
+      }
+
+      if(typeof vnode.tag==='function'){
+        const compVNode=vnode.tag({...vnode.props, children:vnode.children});
+        return renderVNode(compVNode, container, oldVNode?oldVNode.child:null);
+      }
+
+      if(vnode.tag===Fragment){
+        const childrenNodes=[];
+        vnode.children.forEach((child,i)=>{
+          childrenNodes.push(renderVNode(child, container, oldVNode?oldVNode.children[i]:null));
+        });
+        return {type:Fragment, children:childrenNodes};
+      }
+
+      if(vnode.tag===Portal){
+        const portalContainer=vnode.props.container;
+        const childrenNodes=[];
+        vnode.children.forEach((child,i)=>{
+          childrenNodes.push(renderVNode(child, portalContainer, oldVNode?oldVNode.children[i]:null));
+        });
+        return {type:Portal, children:childrenNodes};
+      }
+
+      let el;
+      if(oldVNode && oldVNode.el && oldVNode.type===vnode.tag) el=oldVNode.el;
+      else{
+        el=document.createElement(vnode.tag);
+        if(oldVNode && oldVNode.el) container.replaceChild(el, oldVNode.el);
+        else container.appendChild(el);
+      }
+
+      // props
+      const oldProps=(oldVNode && oldVNode.props)||{};
+      for(const key in vnode.props){
+        if(key.startsWith('on') && typeof vnode.props[key]==='function'){
+          if(oldProps[key]!==vnode.props[key]){
+            if(oldProps[key]) el.removeEventListener(key.slice(2).toLowerCase(), oldProps[key]);
+            el.addEventListener(key.slice(2).toLowerCase(), vnode.props[key]);
+          }
+        } else if(key==='style' && typeof vnode.props[key]==='object'){
+          Object.assign(el.style, vnode.props[key]);
+        } else {
+          if(oldProps[key]!==vnode.props[key]) el.setAttribute(key,vnode.props[key]);
+        }
+      }
+      for(const key in oldProps){
+        if(!(key in vnode.props)){
+          if(key.startsWith('on')) el.removeEventListener(key.slice(2).toLowerCase(), oldProps[key]);
+          else el.removeAttribute(key);
+        }
+      }
+
+      // Children diff with key replace
+      const oldChildren=(oldVNode && oldVNode.children)||[];
+      const newChildren=[];
+      const keyedOld={};
+      oldChildren.forEach(c=>{if(c && c.props && c.props.key != null) keyedOld[c.props.key]=c;});
+
+      vnode.children.forEach((child,i)=>{
+        let oldChild=null;
+        if(child && child.props && child.props.key != null) oldChild = keyedOld[child.props.key] || null;
+        else oldChild = oldChildren[i] || null;
+
+        const newChild = renderVNode(child, el, oldChild);
+
+        // 替换原有内容，而不是重新添加节点
+        if(oldChild && newChild && oldChild.el && newChild.el && oldChild.el !== newChild.el){
+          el.replaceChild(newChild.el, oldChild.el);
+        }
+
+        newChildren.push(newChild);
+      });
+
+      return {type:vnode.tag, el, props:vnode.props, children:newChildren};
+    }
+
+    /*** Demo Components ***/
+    function Counter({initial=0}){
+      const [count,setCount]=useState(initial);
+      useEffect(()=>{console.log('Counter',count); return ()=>console.log('Cleanup',count);},[count]);
+      return (
+        <div>
+          <h3>Counter: {count}</h3>
+          <button onClick={()=>setCount(count+1)}>+</button>
+          <button onClick={()=>setCount(count-1)}>-</button>
+        </div>
+      );
+    }
+
+    function App(){
+      const [text,setText]=useState('Mini React v5 Key Replace Demo');
+      const [items,setItems]=useState([
+        {id:1,text:'Apple'},
+        {id:2,text:'Banana'},
+      ]);
+
+      function addItem(){
+        const nextId=items.length+1;
+        setItems([...items,{id:nextId,text:`Item ${nextId}`}]);
+      }
+
+      function removeItem(id){
+        setItems(items.filter(i=>i.id!==id));
+      }
+
+      function shuffle(){
+        setItems([...items].sort(()=>Math.random()-0.5));
+      }
+
+      function updateContent(id){
+        setItems(items.map(i=>i.id===id ? {...i, text:i.text+'*'} : i));
+      }
+
+      return (
+        <>
+          <h1>Mini React v5 Key Replace Demo</h1>
+          <input value={text} onInput={e=>setText(e.target.value)}/>
+          <p>You typed: {text}</p>
+          <Counter initial={5}/>
+          <button onClick={addItem}>Add Item</button>
+          <button onClick={shuffle}>Shuffle Items</button>
+          <ul>
+            {items.map(item=>
+              <li key={item.id}>
+                {item.text} 
+                <button onClick={()=>updateContent(item.id)}>Update</button>
+                <button onClick={()=>removeItem(item.id)}>Remove</button>
+              </li>
+            )}
+          </ul>
+          <Portal container={document.getElementById('portal-root')}>
+            <p>This is rendered via Portal!</p>
+          </Portal>
+        </>
+      );
+    }
+
+    // Initialize app
+    scheduleRender();
+  </script>
+</body>
+</html>

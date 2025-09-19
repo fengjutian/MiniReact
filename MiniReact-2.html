@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Mini React v2</title>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <script type="text/babel">
+    /*** Mini React v2 ***/
+    let state = [];
+    let stateIndex = 0;
+    let effects = [];
+    let pendingEffects = [];
+
+    function useState(initial) {
+      const currentIndex = stateIndex;
+      state[currentIndex] = state[currentIndex] ?? initial;
+
+      function setState(newState) {
+        state[currentIndex] = newState;
+        rerender();
+      }
+
+      stateIndex++;
+      return [state[currentIndex], setState];
+    }
+
+    /**
+     * 实现 useEffect 钩子函数，用于在组件渲染后执行副作用操作。
+     * 
+     * @param {Function} callback - 副作用函数，在依赖项发生变化时执行。
+     * @param {Array} deps - 依赖项数组，用于判断副作用函数是否需要重新执行。
+     *                       如果为 undefined，则每次渲染后都会执行副作用函数。
+     */
+    function useEffect(callback, deps) {
+      // 获取当前状态索引，用于存储和获取对应的依赖项
+      const currentIndex = stateIndex;
+      // 获取之前存储的依赖项
+      const oldDeps = effects[currentIndex];
+      // 默认标记依赖项已发生变化
+      let hasChanged = true;
+
+      // 如果存在旧的依赖项，则比较新旧依赖项是否有变化
+      if (oldDeps) {
+        // 使用 some 方法检查新依赖项数组中是否有元素与旧依赖项对应位置的元素不相等
+        hasChanged = deps.some((d, i) => d !== oldDeps[i]);
+      }
+
+      // 如果依赖项发生了变化
+      if (hasChanged) {
+        // 将副作用函数添加到待执行的副作用队列中
+        pendingEffects.push(callback);
+        // 更新存储的依赖项
+        effects[currentIndex] = deps;
+      }
+
+      // 状态索引递增，为下一个 Hook 调用做准备
+      stateIndex++;
+    }
+
+    /**
+     * @jsx createElement
+     */
+    function createElement(tag, props, ...children) {
+      return { tag, props: props || {}, children: children.flat() };
+    }
+
+    function render(vnode, container) {
+      if (vnode === null || vnode === undefined) return;
+
+      if (typeof vnode === 'string' || typeof vnode === 'number') {
+        const textNode = document.createTextNode(vnode);
+        container.appendChild(textNode);
+        return textNode;
+      }
+
+      if (typeof vnode.tag === 'function') {
+        const componentVnode = vnode.tag({ ...vnode.props, children: vnode.children });
+        return render(componentVnode, container);
+      }
+
+      const el = document.createElement(vnode.tag);
+
+      for (const key in vnode.props) {
+        if (key.startsWith('on') && typeof vnode.props[key] === 'function') {
+          el.addEventListener(key.slice(2).toLowerCase(), vnode.props[key]);
+        } else if (key === 'style' && typeof vnode.props[key] === 'object') {
+          Object.assign(el.style, vnode.props[key]);
+        } else {
+          el.setAttribute(key, vnode.props[key]);
+        }
+      }
+
+      vnode.children.forEach(child => render(child, el));
+
+      container.appendChild(el);
+      return el;
+    }
+
+    const container = document.getElementById('root');
+    let AppComponent = null;
+    let prevVNode = null;
+
+    function createApp(App) {
+      AppComponent = App;
+      rerender();
+    }
+
+    function rerender() {
+      stateIndex = 0;
+      pendingEffects = [];
+      container.innerHTML = '';
+      prevVNode = render(<AppComponent />, container);
+      pendingEffects.forEach(fn => fn());
+    }
+
+    /*** 示例组件 ***/
+    function Counter({ initial = 0 }) {
+      const [count, setCount] = useState(initial);
+
+      useEffect(() => {
+        console.log('Count changed:', count);
+      }, [count]);
+
+      return (
+        <div>
+          <h2>Counter: {count}</h2>
+          <button onClick={() => setCount(count + 1)}>+</button>
+          <button onClick={() => setCount(count - 1)}>-</button>
+        </div>
+      );
+    }
+
+    function App() {
+      const [text, setText] = useState('Mini React v2');
+      const items = [{ id: 1, text: 'Apple' }, { id: 2, text: 'Banana' }];
+
+      return (
+        <div>
+          <h1>Mini React v2 Demo</h1>
+          <input value={text} onInput={e => setText(e.target.value)} />
+          <p>You typed: {text}</p>
+          <Counter initial={5} />
+          <ul>
+            {items.map(item => <li key={item.id}>{item.text}</li>)}
+          </ul>
+        </div>
+      );
+    }
+
+    createApp(App);
+  </script>
+</body>
+</html>
