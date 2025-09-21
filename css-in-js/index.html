@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>CSS-in-JS Demo (Vanilla JS Library)</title>
+  <script type="module">
+    import { css, keyframes } from "./mini-cssinjs.js";
+    
+    document.addEventListener('DOMContentLoaded', () => {
+      // 按钮 1：普通 hover
+      const btn1 = css`
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        background: lightblue;
+        cursor: pointer;
+        font-size: 16px;
+
+        &:hover {
+          background: deepskyblue;
+          color: white;
+        }
+      `;
+      document.getElementById("btn1").className = btn1;
+
+      // 按钮 2：动态颜色
+      function createButton(color) {
+        return css`
+          padding: 8px 16px;
+          border: none;
+          border-radius: 4px;
+          background: ${color};
+          cursor: pointer;
+          font-size: 16px;
+
+          &:hover {
+            opacity: 0.7;
+          }
+        `;
+      }
+      document.getElementById("btn2").className = createButton("orange");
+
+      // 方块
+      const box = css`
+        width: 100px;
+        height: 100px;
+        background: green;
+        margin-top: 20px;
+
+        &:hover {
+          background: lime;
+          transform: scale(1.1);
+        }
+      `;
+      document.getElementById("box").className = box;
+
+      // 按钮 3：带动画
+      const pulse = keyframes`
+        0% { transform: scale(1); }
+        50% { transform: scale(0.9); }
+        100% { transform: scale(1); }
+      `;
+      const btn3 = css`
+        padding: 8px 16px;
+        border: none;
+        border-radius: 4px;
+        background: violet;
+        cursor: pointer;
+        font-size: 16px;
+
+        &:active {
+          animation: ${pulse} 0.3s ease;
+          background: purple;
+          color: white;
+        }
+      `;
+      document.getElementById("btn3").className = btn3;
+    });
+  </script>
+</head>
+<body>
+  <h1>CSS-in-JS 原生实现 (库 + 示例)</h1>
+  <button id="btn1">普通按钮</button>
+  <button id="btn2">动态按钮</button>
+  <button id="btn3">带动画按钮</button>
+  <div id="box"></div>
+</body>
+</html>
