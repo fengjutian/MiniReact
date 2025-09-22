@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>CSS-in-JS Demo (Vanilla JS Library)</title>
+  <title>CSS-in-JS Demo (Vanilla JS Library) - Fixed</title>
   <script>
     // 简单 hash，用于生成唯一 className / animationName
     function simpleHash(str) {
@@ -25,55 +25,90 @@
       return styleEl;
     }
 
-    // 定义普通样式，返回 className - 修复了选择器处理
+    // 改进版 css：将嵌套选择器抽出为独立规则
     function css(template, ...args) {
-      // 获取原始模板字符串
-      const rawStrings = template.raw;
+      // 合并模板字符串和插值
       let styleText = '';
-      
-      // 组合模板字符串和插值
-      for (let i = 0; i < rawStrings.length; i++) {
-        styleText += rawStrings[i];
-        if (i < args.length) {
-          styleText += args[i];
-        }
+      const raw = template.raw;
+      for (let i = 0; i < raw.length; i++) {
+        styleText += raw[i];
+        if (i < args.length) styleText += args[i];
       }
 
       const className = simpleHash(styleText);
-      // 修复 & 选择器替换逻辑
-      let finalCss = styleText.replace(/&/g, "." + className);
-
       const styleEl = getStyleEl();
-      if (!styleEl.innerHTML.includes(className)) {
-        styleEl.innerHTML += `.${className}{${finalCss}}\n`;
+      // 避免重复注入：检查是否存在完整的主规则标记
+      if (styleEl.textContent.includes(`.${className} {`)) {
+        return className;
       }
+
+      // 提取所有以 & 开头的嵌套规则（例如 &:hover, & .child, &:hover, &:focus）
+      const nestedRegex = /&([^{]*)\{([\s\S]*?)\}/g;
+      let match;
+      let baseProps = styleText;
+      const extraRules = [];
+
+      // 用原始 styleText 去匹配所有嵌套块
+      while ((match = nestedRegex.exec(styleText)) !== null) {
+        const selSuffixRaw = match[1].trim(); // 例如 ":hover" 或 ".child, :focus"
+        const inner = match[2].trim();
+
+        // 处理逗号分隔的情况： &:hover, &:focus { ... }
+        const selectors = selSuffixRaw.split(',')
+          .map(s => `.${className}${s.trim()}`)
+          .join(', ');
+
+        // 格式化 inner 内容（保持缩进）
+        const innerLines = inner.split('\n').map(l => '  ' + l.trim()).join('\n');
+
+        extraRules.push(`${selectors} {\n${innerLines}\n}`);
+
+        // 从 baseProps 中删除这个嵌套块（以免重复）
+        baseProps = baseProps.replace(match[0], '');
+      }
+
+      // 主规则（顶层声明）
+      const mainLines = baseProps
+        .split('\n')
+        .map(l => l.trim())
+        .filter(Boolean)
+        .map(l => '  ' + l)
+        .join('\n');
+
+      let newCss = `.${className} {\n${mainLines}\n}\n`;
+      if (extraRules.length) {
+        newCss += extraRules.join('\n') + '\n';
+      }
+
+      // 使用 textContent 避免 HTML 解析干扰
+      styleEl.textContent += newCss;
 
       return className;
     }
 
-    // 定义 keyframes 动画，返回 animationName
+    // keyframes（保留原理，但用 textContent 防止重复）
     function keyframes(template, ...args) {
-      const rawStrings = template.raw;
       let animText = '';
-      
-      for (let i = 0; i < rawStrings.length; i++) {
-        animText += rawStrings[i];
-        if (i < args.length) {
-          animText += args[i];
-        }
+      const raw = template.raw;
+      for (let i = 0; i < raw.length; i++) {
+        animText += raw[i];
+        if (i < args.length) animText += args[i];
       }
 
       const animName = "k" + simpleHash(animText);
       const styleEl = getStyleEl();
-      if (!styleEl.innerHTML.includes(animName)) {
-        styleEl.innerHTML += `@keyframes ${animName}{${animText}}\n`;
+      if (!styleEl.textContent.includes(`@keyframes ${animName}`)) {
+        const body = animText.split('\n').map(line => '  ' + line.trim()).join('\n');
+        styleEl.textContent += `@keyframes ${animName} {\n${body}\n}\n`;
       }
 
       return animName;
     }
 
-    // 等待 DOM 加载完成
+    // 等待 DOM 完全加载
     document.addEventListener('DOMContentLoaded', () => {
+      console.log("DOM 已加载，开始应用样式...");
+
       // 按钮 1：普通 hover
       const btn1 = css`
         padding: 8px 16px;
@@ -82,15 +117,19 @@
         background: lightblue;
         cursor: pointer;
         font-size: 16px;
+        transition: all 0.2s ease;
 
         &:hover {
           background: deepskyblue;
           color: white;
         }
       `;
-      document.getElementById("btn1").className = btn1;
+      const button1 = document.getElementById("btn1");
+      // 使用 classList.add 更安全，不覆盖已有类
+      button1.classList.add(btn1);
+      console.log("按钮1样式应用完成，类名:", btn1);
 
-      // 按钮 2：动态颜色 - 修复了 hover 效果
+      // 按钮 2：动态颜色
       function createButton(color) {
         return css`
           padding: 8px 16px;
@@ -106,7 +145,9 @@
           }
         `;
       }
-      document.getElementById("btn2").className = createButton("orange");
+      const btn2 = createButton("orange");
+      document.getElementById("btn2").classList.add(btn2);
+      console.log("按钮2样式应用完成，类名:", btn2);
 
       // 方块
       const box = css`
@@ -121,7 +162,8 @@
           transform: scale(1.1);
         }
       `;
-      document.getElementById("box").className = box;
+      document.getElementById("box").classList.add(box);
+      console.log("方块样式应用完成，类名:", box);
 
       // 按钮 3：带动画
       const pulse = keyframes`
@@ -143,12 +185,16 @@
           color: white;
         }
       `;
-      document.getElementById("btn3").className = btn3;
+      document.getElementById("btn3").classList.add(btn3);
+      console.log("按钮3样式应用完成，类名:", btn3, "动画名:", pulse);
+
+      // 调试：显示生成的样式内容
+      console.log("生成的样式:\n", document.querySelector("style[data-css-in-js]").textContent);
     });
   </script>
 </head>
 <body>
-  <h1>CSS-in-JS 原生实现 (库 + 示例)</h1>
+  <h1>CSS-in-JS 原生实现 (库 + 示例) - Fixed</h1>
   <button id="btn1">普通按钮</button>
   <button id="btn2">动态按钮</button>
   <button id="btn3">带动画按钮</button>
