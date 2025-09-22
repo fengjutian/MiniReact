@@ -3,9 +3,76 @@
 <head>
   <meta charset="UTF-8" />
   <title>CSS-in-JS Demo (Vanilla JS Library)</title>
-  <script type="module">
-    import { css, keyframes } from "./mini-cssinjs.js";
-    
+  <script>
+    // 简单 hash，用于生成唯一 className / animationName
+    function simpleHash(str) {
+      let h = 0;
+      for (let i = 0; i < str.length; i++) {
+        h = ((h << 5) - h) + str.charCodeAt(i);
+        h |= 0;
+      }
+      return "c" + Math.abs(h).toString(36);
+    }
+
+    // 获取或创建 <style>
+    function getStyleEl() {
+      let styleEl = document.querySelector("style[data-css-in-js]");
+      if (!styleEl) {
+        styleEl = document.createElement("style");
+        styleEl.setAttribute("data-css-in-js", "true");
+        document.head.appendChild(styleEl);
+      }
+      return styleEl;
+    }
+
+    // 定义普通样式，返回 className - 修复了选择器处理
+    function css(template, ...args) {
+      // 获取原始模板字符串
+      const rawStrings = template.raw;
+      let styleText = '';
+      
+      // 组合模板字符串和插值
+      for (let i = 0; i < rawStrings.length; i++) {
+        styleText += rawStrings[i];
+        if (i < args.length) {
+          styleText += args[i];
+        }
+      }
+
+      const className = simpleHash(styleText);
+      // 修复 & 选择器替换逻辑
+      let finalCss = styleText.replace(/&/g, "." + className);
+
+      const styleEl = getStyleEl();
+      if (!styleEl.innerHTML.includes(className)) {
+        styleEl.innerHTML += `.${className}{${finalCss}}\n`;
+      }
+
+      return className;
+    }
+
+    // 定义 keyframes 动画，返回 animationName
+    function keyframes(template, ...args) {
+      const rawStrings = template.raw;
+      let animText = '';
+      
+      for (let i = 0; i < rawStrings.length; i++) {
+        animText += rawStrings[i];
+        if (i < args.length) {
+          animText += args[i];
+        }
+      }
+
+      const animName = "k" + simpleHash(animText);
+      const styleEl = getStyleEl();
+      if (!styleEl.innerHTML.includes(animName)) {
+        styleEl.innerHTML += `@keyframes ${animName}{${animText}}\n`;
+      }
+
+      return animName;
+    }
+
+    // 等待 DOM 加载完成
     document.addEventListener('DOMContentLoaded', () => {
       // 按钮 1：普通 hover
       const btn1 = css`
@@ -23,7 +90,7 @@
       `;
       document.getElementById("btn1").className = btn1;
 
-      // 按钮 2：动态颜色
+      // 按钮 2：动态颜色 - 修复了 hover 效果
       function createButton(color) {
         return css`
           padding: 8px 16px;
@@ -32,6 +99,7 @@
           background: ${color};
           cursor: pointer;
           font-size: 16px;
+          transition: opacity 0.2s ease;
 
           &:hover {
             opacity: 0.7;
@@ -46,6 +114,7 @@
         height: 100px;
         background: green;
         margin-top: 20px;
+        transition: all 0.2s ease;
 
         &:hover {
           background: lime;
