@@ -4,13 +4,24 @@
   <meta charset="UTF-8" />
   <title>CSS-in-JS Demo (Vanilla JS Library) - Fixed</title>
   <script>
-    // 简单 hash，用于生成唯一 className / animationName
+    /**
+     * 生成简单的哈希值，用于创建唯一的 className
+     * @param {string} str - 输入的字符串，通常是 CSS 样式文本
+     * @returns {string} - 以 'c' 开头，后跟哈希值转换为 36 进制的字符串
+     */
     function simpleHash(str) {
+      // 初始化哈希值为 0
       let h = 0;
+      // 遍历输入字符串的每个字符
       for (let i = 0; i < str.length; i++) {
+        // 使用位运算和字符编码生成哈希值
+        // h << 5 相当于 h * 32，减去 h 相当于 h * 31
+        // 这样做可以让哈希值更均匀分布
         h = ((h << 5) - h) + str.charCodeAt(i);
+        // 使用按位或 0 将结果转换为 32 位有符号整数
         h |= 0;
       }
+      // 取哈希值的绝对值，转换为 36 进制字符串，并在前面加上 'c'
       return "c" + Math.abs(h).toString(36);
     }
 
